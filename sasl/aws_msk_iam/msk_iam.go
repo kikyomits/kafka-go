@@ -35,7 +35,7 @@ type SignerIfc interface {
 // Mechanism implements sasl.Mechanism for the AWS_MSK_IAM mechanism, based on the official java implementation:
 // https://github.com/aws/aws-msk-iam-auth
 type Mechanism struct {
-	// Deprecated, to support both of the aws-sdk-go-v1 and aws-sdk-go-v2, we implemented GenericSigner. The sig.Signer to use when signing the request.
+	//  \The sig.Signer to use when signing the request. To support both of the aws-sdk-go-v1 and aws-sdk-go-v2, we implemented GenericSigner too.
 	Signer *sig.Signer
 	// interface which supports both of the aws-sdk-go-v1 and aws-sdk-go-v2, use when signing the request.
 	GenericSigner SignerIfc
