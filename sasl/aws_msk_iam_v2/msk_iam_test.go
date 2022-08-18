@@ -7,11 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/segmentio/kafka-go/sasl"
-	"github.com/stretchr/testify/assert"
-
 	signer "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	credentialsv2 "github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/segmentio/kafka-go/sasl"
 )
 
 const (
@@ -33,7 +31,6 @@ func TestAwsMskIamMechanism(t *testing.T) {
 			Host: "localhost",
 			Port: 9092,
 		})
-
 	}
 
 	tests := []struct {
@@ -108,48 +105,6 @@ func TestAwsMskIamMechanism(t *testing.T) {
 					"expected", expectedAuth,
 					"got", auth,
 				)
-			}
-		})
-	}
-}
-
-func TestDefaultExpiry(t *testing.T) {
-	expiry := time.Second * 5
-	testCases := map[string]struct {
-		Expiry time.Duration
-	}{
-		"with default":    {Expiry: expiry},
-		"without default": {},
-	}
-
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			actual := defaultExpiry(testCase.Expiry)
-			if testCase.Expiry == 0 {
-				assert.Equal(t, time.Minute*5, actual)
-			} else {
-				assert.Equal(t, expiry, actual)
-			}
-
-		})
-	}
-}
-
-func TestDefaultSignTime(t *testing.T) {
-	testCases := map[string]struct {
-		SignTime time.Time
-	}{
-		"with default":    {SignTime: signTime},
-		"without default": {},
-	}
-
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			actual := defaultSignTime(testCase.SignTime)
-			if testCase.SignTime.IsZero() {
-				assert.True(t, actual.After(signTime))
-			} else {
-				assert.Equal(t, signTime, actual)
 			}
 		})
 	}

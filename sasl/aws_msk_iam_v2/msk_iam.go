@@ -32,7 +32,7 @@ const (
 	queryExpiryKey   = "X-Amz-Expires"
 )
 
-var signUserAgent = fmt.Sprintf("kafka-go/sasl/aws_msk_iam/%s", runtime.Version())
+var signUserAgent = fmt.Sprintf("kafka-go/sasl/aws_msk_iam_v2/%s", runtime.Version())
 
 // Mechanism implements sasl.Mechanism for the AWS_MSK_IAM mechanism, based on the official java implementation:
 // https://github.com/aws/aws-msk-iam-auth
@@ -76,43 +76,19 @@ func (m *Mechanism) Next(ctx context.Context, challenge []byte) (bool, []byte, e
 // 	  "x-amz-signature" : "<AWS SigV4 signature computed by the client>"
 // 	}
 func (m *Mechanism) Start(ctx context.Context) (sess sasl.StateMachine, ir []byte, err error) {
-	signedMap, err := m.preSign(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	signedJson, err := json.Marshal(signedMap)
-	return m, signedJson, err
-}
-
-// preSign produces the authentication values required for AWS_MSK_IAM.
-func (m *Mechanism) preSign(ctx context.Context) (map[string]string, error) {
-	req, err := buildReq(ctx, defaultExpiry(m.Expiry))
-	if err != nil {
-		return nil, err
-	}
-
-	signedUrl, header, err := m.Signer.PresignHTTP(ctx, m.Credentials, req, signPayload, signService, m.Region, defaultSignTime(m.SignTime))
-	if err != nil {
-		return nil, err
-	}
-
-	u, err := url.Parse(signedUrl)
-	if err != nil {
-		return nil, err
-	}
-	return buildSignedMap(u, header), nil
-}
-
-// buildReq builds http.Request for aws PreSign.
-func buildReq(ctx context.Context, expiry time.Duration) (*http.Request, error) {
-	query := url.Values{
-		queryActionKey: {signAction},
-		queryExpiryKey: {strconv.FormatInt(int64(expiry/time.Second), 10)},
-	}
 	saslMeta := sasl.MetadataFromContext(ctx)
 	if saslMeta == nil {
-		return nil, errors.New("missing sasl metadata")
+		return nil, nil, errors.New("missing sasl metadata")
+	}
+
+	expiry := m.Expiry
+	if expiry == 0 {
+		expiry = 5 * time.Minute
+	}
+
+	query := url.Values{
+		queryActionKey: {signAction},
+		queryExpiryKey: {strconv.Itoa(int(expiry / time.Second))},
 	}
 
 	signUrl := url.URL{
@@ -122,16 +98,26 @@ func buildReq(ctx context.Context, expiry time.Duration) (*http.Request, error) 
 		RawQuery: query.Encode(),
 	}
 
-	req, err := http.NewRequest(http.MethodGet, signUrl.String(), nil)
+	req, err := http.NewRequest("GET", signUrl.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return req, nil
-}
+	signTime := m.SignTime
+	if signTime.IsZero() {
+		signTime = time.Now()
+	}
 
-// buildSignedMap builds signed string map which will be used to authenticate with MSK.
-func buildSignedMap(u *url.URL, header http.Header) map[string]string {
+	signedUrl, header, err := m.Signer.PresignHTTP(ctx, m.Credentials, req, signPayload, signService, m.Region, signTime)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	u, err := url.Parse(signedUrl)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	signedMap := map[string]string{
 		signVersionKey:   signVersion,
 		signHostKey:      u.Host,
@@ -142,25 +128,11 @@ func buildSignedMap(u *url.URL, header http.Header) map[string]string {
 	for key, vals := range header {
 		signedMap[strings.ToLower(key)] = vals[0]
 	}
+
 	for key, vals := range u.Query() {
 		signedMap[strings.ToLower(key)] = vals[0]
 	}
 
-	return signedMap
-}
-
-// defaultExpiry set default expiration time if user doesn't define Mechanism.Expiry.
-func defaultExpiry(v time.Duration) time.Duration {
-	if v == 0 {
-		return 5 * time.Minute
-	}
-	return v
-}
-
-// defaultSignTime set default sign time if user doesn't define Mechanism.SignTime.
-func defaultSignTime(v time.Time) time.Time {
-	if v.IsZero() {
-		return time.Now()
-	}
-	return v
+	signedJson, err := json.Marshal(signedMap)
+	return m, signedJson, err
 }
